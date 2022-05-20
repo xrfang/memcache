@@ -26,23 +26,27 @@ func init() {
 	cache = &memoryCache{}
 }
 
+// expire 过期时间，当 expire = 0时数据常驻内存，不会过期
 func Add(key string, val interface{}, expire time.Duration) {
 	cache.Lock()
 	defer cache.Unlock()
 	if cache.data == nil {
 		cache.data = make(map[string]cacheItem)
 	}
-	if it, ok := cache.data[key]; ok {
+	if it, ok := cache.data[key]; ok && it.timer != nil {
 		it.timer.Stop()
 	}
-	cache.data[key] = cacheItem{
+	it := cacheItem{
 		Value:      val,
 		created:    time.Now(),
 		expireTime: expire,
-		timer: time.AfterFunc(expire, func() {
-			Delete(key)
-		}),
 	}
+	if expire > 0 {
+		it.timer = time.AfterFunc(expire, func() {
+			Delete(key)
+		})
+	}
+	cache.data[key] = it
 }
 
 func Get(key string) (val interface{}, ok bool) {
@@ -56,7 +60,9 @@ func Delete(key string) {
 	cache.Lock()
 	defer cache.Unlock()
 	if it, ok := cache.data[key]; ok {
-		it.timer.Stop()
+		if it.timer != nil {
+			it.timer.Stop()
+		}
 		delete(cache.data, key)
 	}
 }

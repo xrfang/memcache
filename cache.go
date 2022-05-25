@@ -52,7 +52,9 @@ func Add(key string, val interface{}, expire time.Duration) {
 func Get(key string) (val interface{}, ok bool) {
 	cache.RLock()
 	defer cache.RUnlock()
-	val, ok = cache.data[key]
+	if it, ok := cache.data[key]; ok {
+		val = it.Value
+	}
 	return
 }
 

@@ -14,20 +14,18 @@ type (
 		timer      *time.Timer
 	}
 
-	memoryCache struct {
+	MemoryCache struct {
 		data map[string]cacheItem
 		sync.RWMutex
 	}
 )
 
-var cache *memoryCache
-
-func init() {
-	cache = &memoryCache{}
+func InitCache() *MemoryCache {
+	return &MemoryCache{}
 }
 
 // expire 过期时间，当 expire = 0时数据常驻内存，不会过期
-func Add(key string, val interface{}, expire time.Duration) {
+func (cache *MemoryCache) Add(key string, val interface{}, expire time.Duration) {
 	cache.Lock()
 	defer cache.Unlock()
 	if cache.data == nil {
@@ -43,13 +41,13 @@ func Add(key string, val interface{}, expire time.Duration) {
 	}
 	if expire > 0 {
 		it.timer = time.AfterFunc(expire, func() {
-			Delete(key)
+			cache.Delete(key)
 		})
 	}
 	cache.data[key] = it
 }
 
-func Get(key string) (val interface{}, ok bool) {
+func (cache *MemoryCache) Get(key string) (val interface{}, ok bool) {
 	cache.RLock()
 	defer cache.RUnlock()
 	if it, ok := cache.data[key]; ok {
@@ -58,7 +56,7 @@ func Get(key string) (val interface{}, ok bool) {
 	return
 }
 
-func Delete(key string) {
+func (cache *MemoryCache) Delete(key string) {
 	cache.Lock()
 	defer cache.Unlock()
 	if it, ok := cache.data[key]; ok {

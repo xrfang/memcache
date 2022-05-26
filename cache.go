@@ -7,50 +7,79 @@ import (
 
 type (
 	cacheItem struct {
-		Key        string
 		Value      interface{}
 		created    time.Time
 		expireTime time.Duration
-		timer      *time.Timer
+	}
+
+	CacheOption struct {
+		// 最大缓存数
+		MaxItems int
+		// 最长缓存时间
+		Expire time.Duration
 	}
 
 	MemoryCache struct {
-		data map[string]cacheItem
+		data   map[string]cacheItem
+		keys   []string
+		option CacheOption
 		sync.RWMutex
 	}
 )
 
-func InitCache() *MemoryCache {
-	return &MemoryCache{}
+func InitCache(cp CacheOption) *MemoryCache {
+	cache := &MemoryCache{option: cp}
+	go cache.runClear()
+	return cache
 }
 
-// expire 过期时间，当 expire = 0时数据常驻内存，不会过期
+func (cache *MemoryCache) runClear() {
+	for {
+		func() {
+			defer time.Sleep(1 * time.Second)
+			if len(cache.keys) > cache.option.MaxItems {
+				key := cache.keys[len(cache.keys)-1]
+				cache.Delete(key)
+			}
+			for _, key := range cache.keys {
+				cache.RLock()
+				it, ok := cache.data[key]
+				cache.RUnlock()
+				if ok {
+					if t := time.Since(it.created); t > it.expireTime || t > cache.option.Expire {
+						cache.Delete(key)
+					}
+				} else {
+					cache.Lock()
+					deleteString(cache.keys, key)
+					cache.Unlock()
+				}
+			}
+		}()
+	}
+}
+
+// expire 过期时间，当 expire = 0时数据常驻内存，不超过最大最大缓存数或不超过最长缓存时间时不会过期
 func (cache *MemoryCache) Add(key string, val interface{}, expire time.Duration) {
 	cache.Lock()
 	defer cache.Unlock()
 	if cache.data == nil {
 		cache.data = make(map[string]cacheItem)
 	}
-	if it, ok := cache.data[key]; ok && it.timer != nil {
-		it.timer.Stop()
-	}
 	it := cacheItem{
 		Value:      val,
 		created:    time.Now(),
 		expireTime: expire,
 	}
-	if expire > 0 {
-		it.timer = time.AfterFunc(expire, func() {
-			cache.Delete(key)
-		})
-	}
 	cache.data[key] = it
+	cache.keys = append(cache.keys, key)
 }
 
 func (cache *MemoryCache) Get(key string) (val interface{}, ok bool) {
 	cache.RLock()
 	defer cache.RUnlock()
-	if it, ok := cache.data[key]; ok {
+	it, ok := cache.data[key]
+	if ok {
 		val = it.Value
 	}
 	return
@@ -59,10 +88,18 @@ func (cache *MemoryCache) Get(key string) (val interface{}, ok bool) {
 func (cache *MemoryCache) Delete(key string) {
 	cache.Lock()
 	defer cache.Unlock()
-	if it, ok := cache.data[key]; ok {
-		if it.timer != nil {
-			it.timer.Stop()
-		}
+	if _, ok := cache.data[key]; ok {
 		delete(cache.data, key)
+		deleteString(cache.keys, key)
 	}
+}
+
+func deleteString(r []string, s string) []string {
+	var res = []string{}
+	for _, x := range r {
+		if x != s {
+			res = append(res, x)
+		}
+	}
+	return res
 }

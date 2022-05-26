@@ -13,9 +13,9 @@ type (
 	}
 
 	CacheOption struct {
-		// 最大缓存数
+		// 最大缓存数, 默认为100条
 		MaxItems int
-		// 最长缓存时间
+		// 最长缓存时间， 默认为24小时
 		Expire time.Duration
 	}
 
@@ -28,6 +28,12 @@ type (
 )
 
 func InitCache(cp CacheOption) *MemoryCache {
+	if cp.MaxItems == 0 {
+		cp.MaxItems = 1000
+	}
+	if cp.Expire == 0 {
+		cp.Expire = 24 * time.Hour
+	}
 	cache := &MemoryCache{option: cp}
 	go cache.runClear()
 	return cache

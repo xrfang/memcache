@@ -21,6 +21,7 @@ type (
 	memoryCache struct {
 		data map[string]*cacheItem
 		opts *CacheOption
+		wttl bool //包含有超时的条目
 		sync.Mutex
 	}
 )
@@ -41,30 +42,46 @@ func New(co *CacheOption) *memoryCache {
 	go func() {
 		for {
 			time.Sleep(time.Second)
-			mc.clean()
+			mc.refresh()
+			mc.evict()
 		}
 	}()
 	return &mc
 }
 
-func (cache *memoryCache) clean() {
+func (cache *memoryCache) refresh() {
 	cache.Lock()
 	defer cache.Unlock()
+	if !cache.wttl {
+		return
+	}
+	wttl := false
+	for k, ci := range cache.data {
+		if ci.ttl != nil {
+			if time.Now().After(*ci.ttl) {
+				delete(cache.data, k)
+			} else {
+				wttl = true
+			}
+		}
+	}
+	cache.wttl = wttl
+}
+
+func (cache *memoryCache) evict() {
+	cache.Lock()
+	defer cache.Unlock()
+	over := len(cache.data) - cache.opts.Capacity
+	if over <= 0 {
+		return
+	}
 	type keyrank struct {
 		key  string
 		used int64
 		hits int64
 	}
 	var krs []keyrank
-	over := len(cache.data) - cache.opts.Capacity
 	for k, ci := range cache.data {
-		if ci.ttl != nil && time.Now().After(*ci.ttl) {
-			delete(cache.data, k)
-			over--
-		}
-		if over <= 0 {
-			continue
-		}
 		krs = append(krs, keyrank{key: k, used: ci.used, hits: ci.hits})
 		switch cache.opts.Policy {
 		case PolicyLRU:
@@ -127,6 +144,9 @@ func (cache *memoryCache) Set(key string, val any, expire ...time.Duration) {
 	if len(expire) > 0 && expire[0] > 0 {
 		ttl := time.Now().Add(expire[0])
 		ci.ttl = &ttl
+		cache.wttl = true
+	} else {
+		ci.ttl = nil
 	}
 	cache.data[key] = ci
 }

@@ -1,111 +1,145 @@
 package memorycache
 
 import (
+	"sort"
 	"sync"
 	"time"
 )
 
 type (
 	cacheItem struct {
-		Value      interface{}
-		created    time.Time
-		expireTime time.Duration
+		data interface{}
+		hits int64 //使用次数（LFU）
+		used int64 //最后使用时间戳（毫秒，LRU）
+		ttl  *time.Time
 	}
-
-	CacheOption struct {
-		// 最大缓存数, 默认为100条
-		MaxItems int
-		// 最长缓存时间， 默认为24小时
-		Expire time.Duration
+	EvictionPolicy byte
+	CacheOption    struct {
+		Capacity int            //最大缓存数, 默认1024条
+		Policy   EvictionPolicy //缓存清理策略，默认LRU
 	}
-
-	MemoryCache struct {
-		data   map[string]cacheItem
-		keys   []string
-		option CacheOption
-		sync.RWMutex
+	memoryCache struct {
+		data map[string]*cacheItem
+		opts *CacheOption
+		sync.Mutex
 	}
 )
 
-func InitCache(cp CacheOption) *MemoryCache {
-	if cp.MaxItems == 0 {
-		cp.MaxItems = 1000
+const (
+	PolicyLRU EvictionPolicy = iota
+	PolicyLFU
+)
+
+func New(co *CacheOption) *memoryCache {
+	if co == nil {
+		co = new(CacheOption)
 	}
-	if cp.Expire == 0 {
-		cp.Expire = 24 * time.Hour
+	if co.Capacity <= 0 {
+		co.Capacity = 1024
 	}
-	cache := &MemoryCache{option: cp}
-	go cache.runClear()
-	return cache
+	mc := memoryCache{opts: co, data: make(map[string]*cacheItem)}
+	go func() {
+		for {
+			time.Sleep(time.Second)
+			mc.clean()
+		}
+	}()
+	return &mc
 }
 
-func (cache *MemoryCache) runClear() {
-	for {
-		func() {
-			defer time.Sleep(1 * time.Second)
-			if len(cache.keys) > cache.option.MaxItems {
-				key := cache.keys[len(cache.keys)-1]
-				cache.Delete(key)
-			}
-			for _, key := range cache.keys {
-				cache.RLock()
-				it, ok := cache.data[key]
-				cache.RUnlock()
-				if ok {
-					if t := time.Since(it.created); t > it.expireTime || t > cache.option.Expire {
-						cache.Delete(key)
+func (cache *memoryCache) clean() {
+	cache.Lock()
+	defer cache.Unlock()
+	type keyrank struct {
+		key  string
+		used int64
+		hits int64
+	}
+	var krs []keyrank
+	over := len(cache.data) - cache.opts.Capacity
+	for k, ci := range cache.data {
+		if ci.ttl != nil && time.Now().After(*ci.ttl) {
+			delete(cache.data, k)
+			over--
+		}
+		if over <= 0 {
+			continue
+		}
+		krs = append(krs, keyrank{key: k, used: ci.used, hits: ci.hits})
+		switch cache.opts.Policy {
+		case PolicyLRU:
+			sort.Slice(krs, func(i, j int) bool {
+				switch {
+				case krs[i].used < krs[j].used:
+					return true
+				case krs[i].used > krs[j].used:
+					return false
+				default:
+					switch {
+					case krs[i].hits < krs[j].hits:
+						return true
+					case krs[i].hits > krs[j].hits:
+						return false
+					default:
+						return krs[i].key < krs[j].key
 					}
-				} else {
-					cache.Lock()
-					deleteString(cache.keys, key)
-					cache.Unlock()
 				}
-			}
-		}()
-	}
-}
-
-// expire 过期时间，当 expire = 0时数据常驻内存，不超过最大最大缓存数或不超过最长缓存时间时不会过期
-func (cache *MemoryCache) Add(key string, val interface{}, expire time.Duration) {
-	cache.Lock()
-	defer cache.Unlock()
-	if cache.data == nil {
-		cache.data = make(map[string]cacheItem)
-	}
-	it := cacheItem{
-		Value:      val,
-		created:    time.Now(),
-		expireTime: expire,
-	}
-	cache.data[key] = it
-	cache.keys = append(cache.keys, key)
-}
-
-func (cache *MemoryCache) Get(key string) (val interface{}, ok bool) {
-	cache.RLock()
-	defer cache.RUnlock()
-	it, ok := cache.data[key]
-	if ok {
-		val = it.Value
-	}
-	return
-}
-
-func (cache *MemoryCache) Delete(key string) {
-	cache.Lock()
-	defer cache.Unlock()
-	if _, ok := cache.data[key]; ok {
-		delete(cache.data, key)
-		deleteString(cache.keys, key)
-	}
-}
-
-func deleteString(r []string, s string) []string {
-	var res = []string{}
-	for _, x := range r {
-		if x != s {
-			res = append(res, x)
+			})
+		default: //LFU
+			sort.Slice(krs, func(i, j int) bool {
+				switch {
+				case krs[i].hits < krs[j].hits:
+					return true
+				case krs[i].hits > krs[j].hits:
+					return false
+				default:
+					switch {
+					case krs[i].used < krs[j].used:
+						return true
+					case krs[i].used > krs[j].used:
+						return false
+					default:
+						return krs[i].key < krs[j].key
+					}
+				}
+			})
+		}
+		if len(krs) > over {
+			krs = krs[:over]
 		}
 	}
-	return res
+	for _, kr := range krs {
+		delete(cache.data, kr.key)
+	}
+}
+
+//expire为可选的过期时间，当expire>0时，即便缓存没有满，数据也会因超时被清理
+func (cache *memoryCache) Set(key string, val any, expire ...time.Duration) {
+	cache.Lock()
+	defer cache.Unlock()
+	ci := cache.data[key]
+	if ci == nil {
+		ci = new(cacheItem)
+	}
+	ci.data = val
+	ci.used = time.Now().UnixMilli()
+	ci.hits++
+	if len(expire) > 0 && expire[0] > 0 {
+		ttl := time.Now().Add(expire[0])
+		ci.ttl = &ttl
+	}
+	cache.data[key] = ci
+}
+
+func (cache *memoryCache) Get(key string) (val any, ok bool) {
+	cache.Lock()
+	defer cache.Unlock()
+	ci := cache.data[key]
+	if ci == nil {
+		return nil, false
+	}
+	ci.used = time.Now().UnixMilli()
+	ci.hits++
+	cache.data[key] = ci
+	return ci.data, true
 }

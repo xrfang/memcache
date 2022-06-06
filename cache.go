@@ -163,3 +163,35 @@ func (cache *memoryCache) Get(key string) (val any, ok bool) {
 	cache.data[key] = ci
 	return ci.data, true
 }
+
+func (cache *memoryCache) GetBytes(key string) []byte {
+	val, ok := cache.Get(key)
+	if !ok {
+		return nil
+	}
+	return val.([]byte)
+}
+
+func (cache *memoryCache) GetFloat(key string) float64 {
+	val, ok := cache.Get(key)
+	if !ok {
+		return 0
+	}
+	return val.(float64)
+}
+
+func (cache *memoryCache) GetInt(key string) int {
+	val, ok := cache.Get(key)
+	if !ok {
+		return 0
+	}
+	return val.(int)
+}
+
+func (cache *memoryCache) GetString(key string) string {
+	val, ok := cache.Get(key)
+	if !ok {
+		return ""
+	}
+	return val.(string)
+}

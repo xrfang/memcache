@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	cache := memorycache.New(&memorycache.CacheOption{})
+	cache := memorycache.New(nil)
 	fmt.Println("设置值", "zhangsan")
 	cache.Set("key1", "zhangsan", 2*time.Second)
 	if it, ok := cache.Get("key1"); ok {

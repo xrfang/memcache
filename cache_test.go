@@ -42,7 +42,7 @@ func TestExpire(t *testing.T) {
 
 func TestLRU(t *testing.T) {
 	t.Log("测试LRU清除策略")
-	cache := New(&CacheOption{Capacity: 2})
+	cache := New(&Option{Capacity: 2})
 	cache.Set("key1", "value1")
 	time.Sleep(time.Second)
 	cache.Set("key2", "value2")
@@ -66,7 +66,7 @@ func TestLRU(t *testing.T) {
 
 func TestLFU(t *testing.T) {
 	t.Log("测试LFU清除策略")
-	cache := New(&CacheOption{Capacity: 2, Policy: PolicyLFU})
+	cache := New(&Option{Capacity: 2, Policy: PolicyLFU})
 	cache.Set("key1", "value1")
 	cache.Set("key2", "value2")
 	_, ok := cache.Get("key1")

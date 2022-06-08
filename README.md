@@ -1,2 +1,3 @@
-# memory-cahce
-go memory cache
+# memorycache
+
+simple memory cache for Golang, with LRU/LFU eviction policies.

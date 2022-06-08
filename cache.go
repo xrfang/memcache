@@ -14,13 +14,13 @@ type (
 		ttl  *time.Time
 	}
 	EvictionPolicy byte
-	CacheOption    struct {
+	Option         struct {
 		Capacity int            //最大缓存数, 默认1024条
 		Policy   EvictionPolicy //缓存清理策略，默认LRU
 	}
-	memoryCache struct {
+	Cache struct {
 		data map[string]*cacheItem
-		opts *CacheOption
+		opts *Option
 		wttl bool //包含有超时的条目
 		sync.Mutex
 	}
@@ -31,14 +31,14 @@ const (
 	PolicyLFU
 )
 
-func New(co *CacheOption) *memoryCache {
+func New(co *Option) *Cache {
 	if co == nil {
-		co = new(CacheOption)
+		co = new(Option)
 	}
 	if co.Capacity <= 0 {
 		co.Capacity = 1024
 	}
-	mc := memoryCache{opts: co, data: make(map[string]*cacheItem)}
+	mc := Cache{opts: co, data: make(map[string]*cacheItem)}
 	go func() {
 		for {
 			time.Sleep(time.Second)
@@ -49,7 +49,7 @@ func New(co *CacheOption) *memoryCache {
 	return &mc
 }
 
-func (cache *memoryCache) refresh() {
+func (cache *Cache) refresh() {
 	cache.Lock()
 	defer cache.Unlock()
 	if !cache.wttl {
@@ -68,7 +68,7 @@ func (cache *memoryCache) refresh() {
 	cache.wttl = wttl
 }
 
-func (cache *memoryCache) evict() {
+func (cache *Cache) evict() {
 	cache.Lock()
 	defer cache.Unlock()
 	over := len(cache.data) - cache.opts.Capacity
@@ -131,7 +131,7 @@ func (cache *memoryCache) evict() {
 }
 
 //expire为可选的过期时间，当expire>0时，即便缓存没有满，数据也会因超时被清理
-func (cache *memoryCache) Set(key string, val any, expire ...time.Duration) {
+func (cache *Cache) Set(key string, val any, expire ...time.Duration) {
 	cache.Lock()
 	defer cache.Unlock()
 	ci := cache.data[key]
@@ -151,7 +151,7 @@ func (cache *memoryCache) Set(key string, val any, expire ...time.Duration) {
 	cache.data[key] = ci
 }
 
-func (cache *memoryCache) Get(key string) (val any, ok bool) {
+func (cache *Cache) Get(key string) (val any, ok bool) {
 	cache.Lock()
 	defer cache.Unlock()
 	ci := cache.data[key]
@@ -164,7 +164,7 @@ func (cache *memoryCache) Get(key string) (val any, ok bool) {
 	return ci.data, true
 }
 
-func (cache *memoryCache) GetBytes(key string) []byte {
+func (cache *Cache) GetBytes(key string) []byte {
 	val, ok := cache.Get(key)
 	if !ok {
 		return nil
@@ -172,7 +172,7 @@ func (cache *memoryCache) GetBytes(key string) []byte {
 	return val.([]byte)
 }
 
-func (cache *memoryCache) GetFloat(key string) float64 {
+func (cache *Cache) GetFloat(key string) float64 {
 	val, ok := cache.Get(key)
 	if !ok {
 		return 0
@@ -180,7 +180,7 @@ func (cache *memoryCache) GetFloat(key string) float64 {
 	return val.(float64)
 }
 
-func (cache *memoryCache) GetInt(key string) int {
+func (cache *Cache) GetInt(key string) int {
 	val, ok := cache.Get(key)
 	if !ok {
 		return 0
@@ -188,7 +188,7 @@ func (cache *memoryCache) GetInt(key string) int {
 	return val.(int)
 }
 
-func (cache *memoryCache) GetString(key string) string {
+func (cache *Cache) GetString(key string) string {
 	val, ok := cache.Get(key)
 	if !ok {
 		return ""

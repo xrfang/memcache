@@ -164,6 +164,16 @@ func (cache *Cache) Get(key string) (val any, ok bool) {
 	return ci.data, true
 }
 
+func (cache *Cache) Del(key string) bool {
+	cache.Lock()
+	defer cache.Unlock()
+	if cache.data[key] == nil {
+		return false
+	}
+	delete(cache.data, key)
+	return true
+}
+
 func (cache *Cache) GetBytes(key string) []byte {
 	val, ok := cache.Get(key)
 	if !ok {

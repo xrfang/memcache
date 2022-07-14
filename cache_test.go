@@ -21,6 +21,20 @@ func TestGetSet(t *testing.T) {
 	t.Log("GET/SET测试通过")
 }
 
+func TestDelete(t *testing.T) {
+	t.Log("测试删除")
+	cache := New(nil)
+	cache.Set("name", "zhangsan")
+	if !cache.Del("name") {
+		t.Fatalf("delete of 'name' failed")
+	}
+	_, ok := cache.Get("name")
+	if ok {
+		t.Fatalf("'name' still in cache after deletion")
+	}
+	t.Log("DEL测试通过")
+}
+
 func TestExpire(t *testing.T) {
 	t.Log("测试超时机制")
 	cache := New(nil)

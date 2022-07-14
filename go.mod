@@ -1,3 +1,3 @@
-module github.com/larch0718/memory-cache
+module github.com/xrfang/memcache
 
 go 1.18

@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"time"
 
-	memorycache "github.com/larch0718/memory-cache"
+        "github.com/xrfang/memcache"
 )
 
 func main() {
-	cache := memorycache.New(nil)
+	cache := memcache.New(nil)
 	fmt.Println("设置值", "zhangsan")
 	cache.Set("key1", "zhangsan", 2*time.Second)
 	if it, ok := cache.Get("key1"); ok {

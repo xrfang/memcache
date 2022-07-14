@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-        "github.com/xrfang/memcache"
+	"github.com/xrfang/memcache"
 )
 
 func main() {

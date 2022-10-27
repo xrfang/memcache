@@ -31,6 +31,11 @@ const (
 	PolicyLFU
 )
 
+const (
+	refreshInterval = 500 * time.Millisecond
+	evictInterval   = 1500 * time.Millisecond
+)
+
 func New(co *Option) *Cache {
 	if co == nil {
 		co = new(Option)
@@ -41,8 +46,13 @@ func New(co *Option) *Cache {
 	mc := Cache{opts: co, data: make(map[string]*cacheItem)}
 	go func() {
 		for {
-			time.Sleep(time.Second)
+			time.Sleep(refreshInterval)
 			mc.refresh()
+		}
+	}()
+	go func() {
+		for {
+			time.Sleep(evictInterval)
 			mc.evict()
 		}
 	}()
@@ -130,7 +140,7 @@ func (cache *Cache) evict() {
 	}
 }
 
-//expire为可选的过期时间，当expire>0时，即便缓存没有满，数据也会因超时被清理
+// expire为可选的过期时间，当expire>0时，即便缓存没有满，数据也会因超时被清理
 func (cache *Cache) Set(key string, val any, expire ...time.Duration) {
 	cache.Lock()
 	defer cache.Unlock()
